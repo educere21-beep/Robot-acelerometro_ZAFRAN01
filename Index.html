@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>🤖 Robot Acelerómetro - Android</title>
+    <style>
+        body {
+            margin: 0;
+            background: #0a1f1a;
+            font-family: 'Segoe UI', system-ui, monospace;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 12px;
+        }
+        .card {
+            max-width: 700px;
+            width: 100%;
+            background: #1e2f2c;
+            border-radius: 48px;
+            padding: 20px;
+            box-shadow: 0 10px 25px black;
+            border: 1px solid gold;
+        }
+        h1 { color: #ffd966; text-align: center; margin: 0 0 5px; font-size: 1.7rem; }
+        .sub { text-align: center; color: #bbddff; margin-bottom: 20px; }
+        .arena {
+            background: #2e4a33;
+            border-radius: 40px;
+            padding: 16px;
+            margin: 10px 0;
+        }
+        .pista {
+            background: #6b4c3b;
+            border-radius: 30px;
+            height: 360px;
+            position: relative;
+            overflow: hidden;
+            border: 2px solid #f7b32b;
+        }
+        .robot {
+            position: absolute;
+            width: 65px;
+            height: 65px;
+            background: radial-gradient(circle at 30% 35%, #ffaa44, #dd6600);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            transition: left 0.02s linear, top 0.02s linear;
+            box-shadow: 0 0 0 3px #222, inset 0 0 12px yellow;
+            pointer-events: none;
+        }
+        .sensor-box {
+            background: #031016cc;
+            backdrop-filter: blur(8px);
+            border-radius: 32px;
+            padding: 12px;
+            margin: 12px 0;
+            text-align: center;
+            font-family: monospace;
+            font-weight: bold;
+            font-size: 1.1rem;
+        }
+        .valores {
+            font-size: 1.4rem;
+            color: #aaffdd;
+            letter-spacing: 2px;
+        }
+        button {
+            background: #ffcd7e;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 60px;
+            font-weight: bold;
+            margin: 6px;
+            cursor: pointer;
+        }
+        .botonera {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 10px;
+            margin: 15px 0;
+        }
+        .diagnostico {
+            background: #1e2a2f;
+            border-radius: 28px;
+            padding: 10px;
+            font-size: 0.8rem;
+            margin-top: 12px;
+            color: #ffecb3;
+        }
+        .warning {
+            background: #4a2e2e;
+            border-radius: 28px;
+            padding: 8px 12px;
+            margin-top: 10px;
+            font-size: 0.75rem;
+            color: #ffc9c9;
+        }
+        .estado {
+            font-weight: bold;
+            background: #00000088;
+            padding: 8px;
+            border-radius: 30px;
+            margin: 8px 0;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+<div class="card">
+    <h1>🤖 ROBOT ANDROID</h1>
+    <div class="sub">Acelerómetro → movimiento en tiempo real</div>
+
+    <div class="arena">
+        <div class="pista" id="pista">
+            <div class="robot" id="robot"></div>
+        </div>
+    </div>
+
+    <div class="sensor-box">
+        📡 Acelerómetro (crudo, incluye gravedad)<br>
+        <span class="valores">
+            X: <span id="valX">0.00</span> &nbsp;|&nbsp;
+            Y: <span id="valY">0.00</span>
+        </span>
+    </div>
+
+    <div class="botonera">
+        <button id="activarBtn">🔓 1. ACTIVAR SENSOR</button>
+        <button id="diagnosticoBtn">🔍 2. DIAGNÓSTICO</button>
+        <button id="simularBtn">🎮 3. SIMULAR (táctil)</button>
+        <button id="resetBtn">🔄 CENTRAR</button>
+    </div>
+
+    <div class="estado" id="estadoMsg">
+        ⚪ Esperando...
+    </div>
+    <div class="diagnostico" id="diagMsg">
+        Presiona "ACTIVAR SENSOR" y mueve el celular.
+    </div>
+    <div class="warning">
+        📌 <strong>Para Android:</strong><br>
+        - Abre esta página en <strong>Chrome</strong> (no en el visor de WhatsApp).<br>
+        - Si ves números fijos en 0.00, probablemente la página no está en <strong>HTTPS</strong>.<br>
+        - Solución: súbela a <strong>GitHub Pages</strong> o a cualquier servidor HTTPS.<br>
+        - Mientras tanto, usa el botón <strong>"SIMULAR"</strong> para ver el movimiento.
+    </div>
+</div>
+
+<script>
+    (function(){
+        // Elementos
+        const robot = document.getElementById('robot');
+        const pista = document.getElementById('pista');
+        const valXSpan = document.getElementById('valX');
+        const valYSpan = document.getElementById('valY');
+        const estadoSpan = document.getElementById('estadoMsg');
+        const diagSpan = document.getElementById('diagMsg');
+        const activarBtn = document.getElementById('activarBtn');
+        const diagnosticoBtn = document.getElementById('diagnosticoBtn');
+        const simularBtn = document.getElementById('simularBtn');
+        const resetBtn = document.getElementById('resetBtn');
+
+        // Estado
+        let sensorActivo = false;
+        let modoSimulacion = false;
+        let rawX = 0, rawY = 0;
+        let posX = 0, posY = 0;
+        let minX = 0, maxX = 0, minY = 0, maxY = 0;
+        let datosRecibidosAlgunaVez = false;
+
+        // Límites del área
+        function updateBounds() {
+            const rect = pista.getBoundingClientRect();
+            const w = robot.offsetWidth;
+            const h = robot.offsetHeight;
+            minX = w / 2;
+            maxX = rect.width - w / 2;
+            minY = h / 2;
+            maxY = rect.height - h / 2;
+            if (maxX < minX) maxX = minX + 1;
+            if (maxY < minY) maxY = minY + 1;
+            posX = Math.min(maxX, Math.max(minX, posX));
+            posY = Math.min(maxY, Math.max(minY, posY));
+            applyPos();
+        }
+
+        function applyPos() {
+            robot.style.left = posX + 'px';
+            robot.style.top = posY + 'px';
+        }
+
+        function centerRobot() {
+            posX = (minX + maxX) / 2;
+            posY = (minY + maxY) / 2;
+            applyPos();
+        }
+
+        // Movimiento usando aceleración cruda
+        let lastTimestamp = 0;
+        const SENSIBILIDAD = 7.5;  // píxeles por m/s² por frame
+
+        function animate(nowMs) {
+            if (!sensorActivo && !modoSimulacion) {
+                lastTimestamp = nowMs;
+                requestAnimationFrame(animate);
+                return;
+            }
+
+            let delta = 0.016;
+            if (lastTimestamp !== 0) {
+                delta = Math.min(0.033, (nowMs - lastTimestamp) / 1000);
+            }
+            if (delta <= 0) {
+                lastTimestamp = nowMs;
+                requestAnimationFrame(animate);
+                return;
+            }
+
+            let ax = modoSimulacion ? rawX : rawX;
+            let ay = modoSimulacion ? rawY : rawY;
+
+            // Mostrar siempre los valores
+            valXSpan.innerText = ax.toFixed(3);
+            valYSpan.innerText = ay.toFixed(3);
+
+            // Mover robot si hay aceleración significativa
+            if (Math.abs(ax) > 0.05 || Math.abs(ay) > 0.05) {
+                let moveX = ax * SENSIBILIDAD * delta;
+                let moveY = ay * SENSIBILIDAD * delta;
+                let newX = posX + moveX;
+                let newY = posY + moveY;
+                if (newX < minX) newX = minX;
+                if (newX > maxX) newX = maxX;
+                if (newY < minY) newY = minY;
+                if (newY > maxY) newY = maxY;
+                posX = newX;
+                posY = newY;
+                applyPos();
+            }
+
+            lastTimestamp = nowMs;
+            requestAnimationFrame(animate);
+        }
+
+        // Manejador del acelerómetro REAL
+        function onDeviceMotion(event) {
+            if (!sensorActivo) return;
+            if (event.accelerationIncludingGravity) {
+                let x = event.accelerationIncludingGravity.x;
+                let y = event.accelerationIncludingGravity.y;
+                if (typeof x === 'number' && !isNaN(x)) rawX = x;
+                if (typeof y === 'number' && !isNaN(y)) rawY = y;
+                if (!datosRecibidosAlgunaVez && (Math.abs(rawX) > 0.1 || Math.abs(rawY) > 0.1)) {
+                    datosRecibidosAlgunaVez = true;
+                    estadoSpan.innerHTML = '✅ ¡Sensor funcionando! Mueve el celular → el robot se mueve.';
+                    diagSpan.innerHTML = '✅ Datos recibidos correctamente. El robot se está moviendo.';
+                }
+            }
+        }
+
+        // Activar sensor en Android con posible requerimiento de gesto de usuario
+        function activarSensorAndroid() {
+            // Primero, comprobar si estamos en file:// o http
+            if (location.protocol !== 'https:' && location.protocol !== 'http:' && location.protocol !== 'file:') {
+                diagSpan.innerHTML = '⚠️ Protocolo: ' + location.protocol + '. Para sensores, USA HTTPS (GitHub Pages o servidor seguro).';
+            } else if (location.protocol === 'http:' && location.hostname !== 'localhost') {
+                diagSpan.innerHTML = '⚠️ HTTP no seguro. El navegador puede bloquear el acelerómetro. Mejor usa HTTPS.';
+            }
+
+            // En Android moderno, algunos navegadores requieren que el usuario toque primero
+            // Añadimos el event listener
+            window.addEventListener('devicemotion', onDeviceMotion);
+            sensorActivo = true;
+            modoSimulacion = false;
+            estadoSpan.innerHTML = '🟢 Sensor activado. Mueve el teléfono. Si no se mueven los números, revisa la nota de HTTPS.';
+            diagSpan.innerHTML = 'Esperando datos del acelerómetro. ¿Ves cambios en los números? Si no, prueba con "Diagnóstico".';
+            
+            // Opcional: forzar un pequeño vibrato para confirmar (si el navegador lo permite)
+            if (navigator.vibrate) navigator.vibrate(50);
+
+            // Si pasan 3 segundos y no se reciben datos, avisar
+            setTimeout(() => {
+                if (!datosRecibidosAlgunaVez && sensorActivo && !modoSimulacion) {
+                    diagSpan.innerHTML = '⚠️ No se detectan cambios en el acelerómetro. Causas probables:<br>- La página no está en HTTPS (abre desde GitHub Pages).<br>- El navegador bloquea el sensor.<br>- Usa el botón "SIMULAR" para probar el movimiento.';
+                    estadoSpan.innerHTML = '⚠️ Sensor activo pero sin datos. Revisa HTTPS.';
+                }
+            }, 3000);
+        }
+
+        // DIAGNÓSTICO: muestra información del navegador y si el evento se dispara
+        let testMode = false;
+        function diagnosticar() {
+            diagSpan.innerHTML = `🔍 Diagnóstico:<br>
+            - Protocolo: ${location.protocol}<br>
+            - Host: ${location.hostname}<br>
+            - User Agent: ${navigator.userAgent}<br>
+            - ¿Sensor activo? ${sensorActivo ? 'Sí' : 'No'}<br>
+            - Últimos valores: X=${rawX.toFixed(3)} Y=${rawY.toFixed(3)}<br>
+            - Modo simulación: ${modoSimulacion ? 'Activo' : 'Inactivo'}<br><br>
+            💡 Consejo: Abre esta página en Chrome y asegúrate de que la URL empiece por <strong>https://</strong>
+            `;
+            if (!datosRecibidosAlgunaVez && sensorActivo && !modoSimulacion) {
+                diagSpan.innerHTML += '<br><span style="color:#ffaa88;">⚠️ No se ha recibido ningún dato del acelerómetro. El navegador lo bloquea por falta de HTTPS.</span>';
+            }
+        }
+
+        // MODO SIMULACIÓN (arrastrar dedo sobre la pista)
+        let simulacionActiva = false;
+        function activarSimulacion() {
+            if (simulacionActiva) {
+                // Desactivar
+                modoSimulacion = false;
+                sensorActivo = false;
+                simulacionActiva = false;
+                simularBtn.style.background = '#ffcd7e';
+                simularBtn.innerText = '🎮 3. SIMULAR (táctil)';
+                estadoSpan.innerHTML = 'Modo simulación desactivado. Usa "ACTIVAR SENSOR" para datos reales.';
+                diagSpan.innerHTML = 'Simulación OFF.';
+                // Limpiar eventos
+                if (window._simuEvents) {
+                    pista.removeEventListener('touchmove', window._simuEvents);
+                    pista.removeEventListener('mousemove', window._simuEvents);
+                }
+                rawX = 0; rawY = 0;
+                return;
+            }
+            // Activar simulación
+            modoSimulacion = true;
+            sensorActivo = false;
+            simulacionActiva = true;
+            simularBtn.style.background = '#f0a3a3';
+            simularBtn.innerText = '⏹️ SALIR SIMULACIÓN';
+            estadoSpan.innerHTML = '🎮 Modo simulación: arrastra el dedo sobre el robot para moverlo.';
+            diagSpan.innerHTML = 'Toca y arrastra dentro del área del robot. Los números X/Y cambiarán y el robot se moverá.';
+
+            function onMove(e) {
+                if (!modoSimulacion) return;
+                e.preventDefault();
+                const rect = pista.getBoundingClientRect();
+                let clientX, clientY;
+                if (e.touches) {
+                    clientX = e.touches[0].clientX;
+                    clientY = e.touches[0].clientY;
+                } else {
+                    clientX = e.clientX;
+                    clientY = e.clientY;
+                }
+                // Vector desde el centro del robot
+                const robotCenterX = rect.left + posX;
+                const robotCenterY = rect.top + posY;
+                let dx = clientX - robotCenterX;
+                let dy = clientY - robotCenterY;
+                // Escalar a aceleración simulada (máximo ±5 m/s²)
+                let maxDist = 80;
+                let ax = (dx / maxDist) * 5;
+                let ay = (dy / maxDist) * 5;
+                ax = Math.min(5, Math.max(-5, ax));
+                ay = Math.min(5, Math.max(-5, ay));
+                rawX = ax;
+                rawY = ay;
+            }
+            pista.addEventListener('touchmove', onMove);
+            pista.addEventListener('mousemove', onMove);
+            window._simuEvents = onMove;
+            // Al soltar, resetear aceleración
+            function resetSim() {
+                if (modoSimulacion) { rawX = 0; rawY = 0; }
+            }
+            pista.addEventListener('touchend', resetSim);
+            pista.addEventListener('mouseleave', resetSim);
+            window._simuReset = resetSim;
+        }
+
+        // Reset y resize
+        window.addEventListener('resize', () => { updateBounds(); centerRobot(); });
+        resetBtn.addEventListener('click', centerRobot);
+        activarBtn.addEventListener('click', () => {
+            if (simulacionActiva) activarSimulacion(); // salir de simulación si estaba
+            activarSensorAndroid();
+        });
+        diagnosticoBtn.addEventListener('click', diagnosticar);
+        simularBtn.addEventListener('click', activarSimulacion);
+
+        // Inicializar
+        function init() {
+            updateBounds();
+            centerRobot();
+            requestAnimationFrame(animate);
+        }
+        init();
+    })();
+</script>
+</body>
+</html>
